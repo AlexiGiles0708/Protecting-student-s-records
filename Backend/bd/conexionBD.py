@@ -20,9 +20,8 @@ def connect_to_database():
             f'DRIVER={driver};'
             f'SERVER={server};'
             f'DATABASE={database};'
-            f'UID={user};'
-            f'PWD={password};'
-            f'TrustServerCertificate={yes}'
+            f'Trusted_Connection=yes;'
+            f'TrustServerCertificate=yes;'
         )
 
         connection = pyodbc.connect(connection_string)

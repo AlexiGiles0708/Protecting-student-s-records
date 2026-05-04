@@ -1,17 +1,6 @@
 -- =========================
 -- BORRAR Y RECREAR LA BASE
 -- =========================
-USE master;
-GO
-
-ALTER DATABASE Crypto SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-GO
-
-DROP DATABASE IF EXISTS Crypto;
-GO
-
-CREATE DATABASE Crypto;
-GO
 
 USE Crypto;
 GO
@@ -68,20 +57,6 @@ CREATE TABLE Estudiante (
         ON DELETE NO ACTION
 );
 
-CREATE TABLE Profesor (
-    id_profesor  INT NOT NULL IDENTITY(1,1),
-    id_usuario   INT NOT NULL,
-    id_grupo     INT NOT NULL,
-    CONSTRAINT pk_profesor         PRIMARY KEY (id_profesor),
-    CONSTRAINT uq_profesor_usuario UNIQUE      (id_usuario),  -- 1 usuario = 1 profesor
-    CONSTRAINT uq_profesor_grupo   UNIQUE      (id_grupo),    -- 1 grupo   = 1 titular
-    CONSTRAINT fk_profesor_usuario FOREIGN KEY (id_usuario) 
-        REFERENCES Usuario(id_usuario)
-        ON UPDATE CASCADE ON DELETE NO ACTION,
-    CONSTRAINT fk_profesor_grupo   FOREIGN KEY (id_grupo)   
-        REFERENCES Grupo(id_grupo)
-        ON UPDATE CASCADE ON DELETE NO ACTION
-);
 
 -- =========================
 -- TABLA CURSO
@@ -97,6 +72,47 @@ CREATE TABLE Curso (
         ON UPDATE CASCADE
         ON DELETE NO ACTION
 );
+
+-- =========================
+-- TABLA NIVEL
+-- =========================
+CREATE TABLE Nivel (
+    id_nivel     INT         NOT NULL IDENTITY(1,1),
+    nombre_nivel VARCHAR(50) NOT NULL,
+    CONSTRAINT pk_nivel        PRIMARY KEY (id_nivel),
+    CONSTRAINT uq_nivel_nombre UNIQUE      (nombre_nivel)
+);
+
+
+-- =========================
+-- TABLA GRUPO
+-- =========================
+CREATE TABLE Grupo (
+    id_grupo     INT         NOT NULL IDENTITY(1,1),
+    nombre_grupo VARCHAR(50) NOT NULL,
+    id_nivel     INT         NOT NULL,
+    CONSTRAINT pk_grupo              PRIMARY KEY (id_grupo),
+    CONSTRAINT uq_grupo_nombre_nivel UNIQUE      (nombre_grupo, id_nivel),
+    CONSTRAINT fk_grupo_nivel        FOREIGN KEY (id_nivel)
+        REFERENCES Nivel(id_nivel)
+        ON UPDATE CASCADE
+        ON DELETE NO ACTION
+);
+
+CREATE TABLE Profesor (
+    id_profesor  INT NOT NULL IDENTITY(1,1),
+    id_usuario   INT NOT NULL,
+    id_grupo     INT NOT NULL,
+    CONSTRAINT pk_profesor         PRIMARY KEY (id_profesor),
+    CONSTRAINT uq_profesor_usuario UNIQUE      (id_usuario),  -- 1 usuario = 1 profesor
+    CONSTRAINT uq_profesor_grupo   UNIQUE      (id_grupo),    -- 1 grupo   = 1 titular
+    CONSTRAINT fk_profesor_usuario FOREIGN KEY (id_usuario) 
+        REFERENCES Usuario(id_usuario)
+        ON UPDATE CASCADE ON DELETE NO ACTION,
+    CONSTRAINT fk_profesor_grupo   FOREIGN KEY (id_grupo)   
+        REFERENCES Grupo(id_grupo)
+        ON UPDATE CASCADE ON DELETE NO ACTION
+);          
 
 -- =========================
 -- TABLA CALIFICACION
@@ -117,31 +133,6 @@ CREATE TABLE Calificacion (
     CONSTRAINT fk_calificacion_curso      FOREIGN KEY (id_curso)
         REFERENCES Curso(id_curso)
         ON UPDATE NO ACTION
-        ON DELETE NO ACTION
-);
-
--- =========================
--- TABLA NIVEL
--- =========================
-CREATE TABLE Nivel (
-    id_nivel     INT         NOT NULL IDENTITY(1,1),
-    nombre_nivel VARCHAR(50) NOT NULL,
-    CONSTRAINT pk_nivel        PRIMARY KEY (id_nivel),
-    CONSTRAINT uq_nivel_nombre UNIQUE      (nombre_nivel)
-);
-
--- =========================
--- TABLA GRUPO
--- =========================
-CREATE TABLE Grupo (
-    id_grupo     INT         NOT NULL IDENTITY(1,1),
-    nombre_grupo VARCHAR(50) NOT NULL,
-    id_nivel     INT         NOT NULL,
-    CONSTRAINT pk_grupo              PRIMARY KEY (id_grupo),
-    CONSTRAINT uq_grupo_nombre_nivel UNIQUE      (nombre_grupo, id_nivel),
-    CONSTRAINT fk_grupo_nivel        FOREIGN KEY (id_nivel)
-        REFERENCES Nivel(id_nivel)
-        ON UPDATE CASCADE
         ON DELETE NO ACTION
 );
 
