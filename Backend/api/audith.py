@@ -3,12 +3,24 @@ from fastapi import Depends
 from pydantic import BaseModel
 from Backend.bd.conexionBD import connect_to_database
 from Backend.crypto_utils.ecdsa import verify_signature
+from Backend.crypto_utils.report_signer import firmar_reporte, verificar_firma_reporte
 
 router = APIRouter()
 
 class VerificarFirmaRequest(BaseModel):
     id_auditoria: int
     firma: str
+
+class FirmarReporteRequest(BaseModel):
+    id_reporte: int
+    id_usuario: int
+    rol: str  # profesor o director
+
+
+class VerificarFirmaReporteRequest(BaseModel):
+    id_reporte: int
+    id_usuario: int
+    rol: str  # profesor o director
 
 @router.put("/verificar/firma")
 def verificar_firma(request: VerificarFirmaRequest):  # ← recibe body
@@ -83,3 +95,41 @@ def verificar_firma(request: VerificarFirmaRequest):  # ← recibe body
     finally:
         if conn:
             conn.close()
+
+
+@router.post("/reporte/firmar")
+def firmar_reporte_endpoint(request: FirmarReporteRequest):
+    resultado = firmar_reporte(
+        request.id_reporte,
+        request.id_usuario,
+        request.rol
+    )
+
+    if not resultado:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se pudo firmar el reporte"
+        )
+
+    return {
+        "message": "Reporte firmado correctamente",
+        "id_reporte": request.id_reporte,
+        "id_usuario": request.id_usuario,
+        "rol": request.rol
+    }
+
+
+@router.post("/reporte/verificar")
+def verificar_firma_reporte_endpoint(request: VerificarFirmaReporteRequest):
+    resultado = verificar_firma_reporte(
+        request.id_reporte,
+        request.id_usuario,
+        request.rol
+    )
+
+    return {
+        "id_reporte": request.id_reporte,
+        "id_usuario": request.id_usuario,
+        "rol": request.rol,
+        "firma_valida": resultado
+    }

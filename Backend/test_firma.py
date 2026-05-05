@@ -1,5 +1,4 @@
-from crypto_utils.report_signer import firmar_reporte
+from crypto_utils.report_signer import verificar_firma_reporte
 
-resultado = firmar_reporte(1, 2, "profesor")
-
-print("Firma aplicada:", resultado)
+print("Firma profesor válida:", verificar_firma_reporte(1, 3, "profesor"))
+print("Firma director válida:", verificar_firma_reporte(1, 4, "director"))
