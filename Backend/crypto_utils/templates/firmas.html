@@ -2,51 +2,99 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Generación y Firma (Frontend)</title>
+    <title>Panel de Firmas - Registros Estudiantiles</title>
     <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
-        .box { border: 1px solid #ccc; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        textarea, input { width: 100%; margin: 10px 0; }
-        button { background: #28a745; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 4px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 40px auto; padding: 20px; background-color: #f4f7f6; color: #333; }
+        .box { background: white; border: 1px solid #ddd; padding: 25px; border-radius: 10px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        h2 { margin-top: 0; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        label { font-weight: bold; display: block; margin-top: 15px; margin-bottom: 5px; color: #555; }
+        input, select, textarea { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        button { background: #3498db; color: white; border: none; padding: 12px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; font-weight: bold; width: 100%; transition: background 0.3s; }
+        button:hover { background: #2980b9; }
+        .success { color: #27ae60; background: #eafaf1; padding: 10px; border-radius: 5px; border-left: 4px solid #27ae60; margin-top: 15px;}
+        .error { color: #c0392b; background: #fdedec; padding: 10px; border-radius: 5px; border-left: 4px solid #c0392b; margin-top: 15px;}
+        .dynamic-section { display: none; padding: 15px; background: #f8f9fa; border-radius: 5px; border: 1px dashed #ccc; }
+        .dynamic-section.active { display: block; }
     </style>
 </head>
 <body>
 
     <div class="box">
-        <h2>1. Generar Identidad (Una sola vez)</h2>
-        <p>Tu navegador generará las llaves. La pública irá al servidor, la privada se quedará aquí.</p>
-        <button id="btnGenerate">Generar Llaves</button>
-        <p id="genStatus"></p>
+        <h2>1. Identidad Criptográfica (Paso Único)</h2>
+        <p>Genera tus llaves locales. La pública se registrará en el servidor.</p>
+        <button id="btnGenerate">Generar y Registrar Llaves</button>
+        <div id="genStatus"></div>
     </div>
 
     <div class="box">
-        <h2>2. Firmar Registro</h2>
-        <textarea id="dataToSign" rows="3">Estudiante: Carlos Lopez | ID: 9876 | Aprobado</textarea>
-        <button id="btnSign">Firmar Documento</button>
-        <p id="signStatus"></p>
+        <h2>2. Acción y Firma de Documentos</h2>
+        
+        <label for="tipoAccion">¿Qué acción deseas realizar y firmar?</label>
+        <select id="tipoAccion">
+            <option value="">-- Selecciona una acción --</option>
+            <optgroup label="Módulo de Profesores">
+                <option value="calificacion">Subir/Firmar Calificación</option>
+                <option value="reporte">Generar/Firmar Reporte Disciplinario</option>
+            </optgroup>
+            <optgroup label="Módulo de Gestión Escolar">
+                <option value="registro_alumno">Registrar Nuevo Alumno</option>
+                <option value="modificacion_expediente">Modificar Expediente de Alumno</option>
+            </optgroup>
+        </select>
+
+        <!-- Formularios Dinámicos -->
+        <div id="form_calificacion" class="dynamic-section">
+            <label>ID del Alumno:</label> <input type="number" id="cal_id_alumno" placeholder="Ej: 2024001">
+            <label>Materia:</label> <input type="text" id="cal_materia" placeholder="Ej: Matemáticas Avanzadas">
+            <label>Calificación Final:</label> <input type="number" id="cal_nota" placeholder="Ej: 95">
+        </div>
+
+        <div id="form_reporte" class="dynamic-section">
+            <label>ID del Alumno:</label> <input type="number" id="rep_id_alumno" placeholder="Ej: 2024001">
+            <label>Motivo del Reporte:</label> <textarea id="rep_motivo" rows="3" placeholder="Ej: Falta de respeto al reglamento..."></textarea>
+            <label>Nivel de Gravedad:</label> 
+            <select id="rep_gravedad">
+                <option value="Leve">Leve</option><option value="Grave">Grave</option>
+            </select>
+        </div>
+
+        <div id="form_registro_alumno" class="dynamic-section">
+            <label>Nombre Completo:</label> <input type="text" id="reg_nombre" placeholder="Ej: Ana María López">
+            <label>CURP:</label> <input type="text" id="reg_curp" placeholder="18 caracteres">
+            <label>Generación:</label> <input type="number" id="reg_generacion" placeholder="Ej: 2024">
+        </div>
+
+        <div id="form_modificacion_expediente" class="dynamic-section">
+            <label>ID del Alumno a Modificar:</label> <input type="number" id="mod_id_alumno" placeholder="Ej: 2024001">
+            <label>Campo Modificado:</label> <input type="text" id="mod_campo" placeholder="Ej: Dirección, Tipo de Sangre...">
+            <label>Nuevo Valor:</label> <input type="text" id="mod_valor" placeholder="Ej: Calle Nueva 123">
+        </div>
+
+        <button id="btnSign" style="margin-top: 20px;">Firmar y Enviar a Servidor</button>
+        <div id="signStatus"></div>
     </div>
 
     <script>
-        let localPrivateKey = null; // En una app real, esto se guardaría en un archivo o IndexedDB
+        let localPrivateKey = null;
 
-        // Helper para convertir ArrayBuffer a Base64
-        function bufferToBase64(buffer) {
-            return btoa(String.fromCharCode(...new Uint8Array(buffer)));
-        }
+        // Mostrar el formulario correcto según el select
+        document.getElementById('tipoAccion').addEventListener('change', function() {
+            document.querySelectorAll('.dynamic-section').forEach(el => el.classList.remove('active'));
+            if(this.value) {
+                document.getElementById('form_' + this.value).classList.add('active');
+            }
+        });
 
-        // Helper matemático para convertir firma RAW (Web Crypto) a DER (Python/Cryptography)
+        // Helpers criptográficos
+        function bufferToBase64(buffer) { return btoa(String.fromCharCode(...new Uint8Array(buffer))); }
         function rawSignatureToDER(rawSigBuffer) {
             const raw = new Uint8Array(rawSigBuffer);
             let r = Array.from(raw.slice(0, 32));
             let s = Array.from(raw.slice(32, 64));
-            
-            // Eliminar ceros a la izquierda, pero si el primer bit es 1, agregar un cero
             while(r.length > 1 && r[0] === 0 && (r[1] & 0x80) === 0) r.shift();
             if((r[0] & 0x80) !== 0) r.unshift(0);
-            
             while(s.length > 1 && s[0] === 0 && (s[1] & 0x80) === 0) s.shift();
             if((s[0] & 0x80) !== 0) s.unshift(0);
-
             const rBytes = [0x02, r.length, ...r];
             const sBytes = [0x02, s.length, ...s];
             const seq = [...rBytes, ...sBytes];
@@ -56,81 +104,97 @@
         // --- PASO 1: GENERAR LLAVES ---
         document.getElementById('btnGenerate').addEventListener('click', async () => {
             const status = document.getElementById('genStatus');
-            status.innerText = "Generando...";
-
             try {
-                // Generar par de llaves P-256 (equivalente a SECP256R1)
-                const keyPair = await window.crypto.subtle.generateKey(
-                    { name: "ECDSA", namedCurve: "P-256" },
-                    true,
-                    ["sign", "verify"]
-                );
-
+                const keyPair = await window.crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
                 localPrivateKey = keyPair.privateKey;
-
-                // Exportar Llave Pública en formato SPKI (SubjectPublicKeyInfo) para Python
                 const pubKeyBuffer = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
                 const pubKeyBase64 = bufferToBase64(pubKeyBuffer);
 
-                status.innerHTML = `✅ Llaves generadas. <br><strong>Llave Pública (para Python):</strong> ${pubKeyBase64.substring(0,25)}...`;
-                
-                // Aquí enviarías 'pubKeyBase64' a tu backend Python para guardarlo
+                // Enviar llave a Python
                 await fetch('/api/registrar_llave', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ pub_b64: pubKeyBase64 })
                 });
-                console.log("Llave pública registrada en el servidor.");
-
-            } catch (error) {
-                console.error(error);
-                status.innerText = "Error generando llaves.";
-            }
+                
+                status.innerHTML = `<div class="success">✅ Llaves generadas y públicas registradas en el servidor.</div>`;
+            } catch (error) { status.innerHTML = `<div class="error">❌ Error al generar llaves.</div>`; }
         });
 
-        // --- PASO 2: FIRMAR ---
+        // --- PASO 2: CONSTRUIR MENSAJE Y FIRMAR ---
         document.getElementById('btnSign').addEventListener('click', async () => {
             const status = document.getElementById('signStatus');
-            const dataText = document.getElementById('dataToSign').value;
+            const accion = document.getElementById('tipoAccion').value;
 
-            if (!localPrivateKey) {
-                alert("Primero debes generar las llaves en el paso 1.");
-                return;
+            if (!localPrivateKey) return alert("Primero debes generar las llaves en el paso 1.");
+            if (!accion) return alert("Selecciona una acción a realizar.");
+
+            // Construir la cadena de texto exacta que se va a firmar (Debe coincidir con cómo la arma Python)
+            let dataText = "";
+            let payload = { accion: accion }; // Datos para enviar al backend
+
+            if (accion === "calificacion") {
+                const id = document.getElementById('cal_id_alumno').value;
+                const mat = document.getElementById('cal_materia').value;
+                const nota = document.getElementById('cal_nota').value;
+                dataText = `CALIFICACION-${id}-${mat}-${nota}`;
+                payload.datos = { id_alumno: id, materia: mat, calificacion: nota };
+            } 
+            else if (accion === "reporte") {
+                const id = document.getElementById('rep_id_alumno').value;
+                const mot = document.getElementById('rep_motivo').value;
+                const grav = document.getElementById('rep_gravedad').value;
+                dataText = `REPORTE-${id}-${mot}-${grav}`;
+                payload.datos = { id_alumno: id, motivo: mot, gravedad: grav };
+            }
+            else if (accion === "registro_alumno") {
+                const nom = document.getElementById('reg_nombre').value;
+                const curp = document.getElementById('reg_curp').value;
+                const gen = document.getElementById('reg_generacion').value;
+                dataText = `REGISTRO-${nom}-${curp}-${gen}`;
+                payload.datos = { nombre: nom, curp: curp, generacion: gen };
+            }
+            else if (accion === "modificacion_expediente") {
+                const id = document.getElementById('mod_id_alumno').value;
+                const cam = document.getElementById('mod_campo').value;
+                const val = document.getElementById('mod_valor').value;
+                dataText = `MODIFICACION-${id}-${cam}-${val}`;
+                payload.datos = { id_alumno: id, campo: cam, valor_nuevo: val };
             }
 
             try {
-                status.innerText = "Firmando...";
+                // Firmar la cadena estructurada
                 const encoder = new TextEncoder();
-                
-                // 1. Firmar con Web Crypto (Devuelve RAW)
                 const rawSignature = await window.crypto.subtle.sign(
                     { name: "ECDSA", hash: { name: "SHA-256" } },
                     localPrivateKey,
                     encoder.encode(dataText)
                 );
+                
+                const signatureB64 = bufferToBase64(rawSignatureToDER(rawSignature));
+                
+                // Agregar firma y el texto exacto al payload
+                payload.firma_b64 = signatureB64;
+                payload.mensaje = dataText;
 
-                // 2. Convertir a formato DER para que Python lo entienda
-                const derSignature = rawSignatureToDER(rawSignature);
-                const signatureB64 = bufferToBase64(derSignature);
+                console.log("Enviando al servidor:", payload);
 
-                status.innerHTML = `✅ Documento firmado.<br><strong>Firma Base64:</strong> ${signatureB64.substring(0,25)}...`;
-
-                // Enviar datos y firma a Python para verificar
                 const respuesta = await fetch('/api/verificar_registro', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        mensaje: dataText,
-                        firma_b64: signatureB64
-                    })
+                    body: JSON.stringify(payload)
                 });
                 
                 const resultadoBackend = await respuesta.json();
-                alert("Respuesta del servidor: " + resultadoBackend.mensaje);
+                if(respuesta.ok) {
+                    status.innerHTML = `<div class="success">✅ ${resultadoBackend.mensaje}</div>`;
+                } else {
+                    status.innerHTML = `<div class="error">❌ ${resultadoBackend.mensaje}</div>`;
+                }
 
             } catch (error) {
                 console.error(error);
-                status.innerText = "Error al firmar.";
+                status.innerHTML = `<div class="error">❌ Error en el proceso de firma.</div>`;
             }
         });
     </script>
