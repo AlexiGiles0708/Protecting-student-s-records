@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Generación y Firma (Frontend)</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
+        .box { border: 1px solid #ccc; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        textarea, input { width: 100%; margin: 10px 0; }
+        button { background: #28a745; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <div class="box">
+        <h2>1. Generar Identidad (Una sola vez)</h2>
+        <p>Tu navegador generará las llaves. La pública irá al servidor, la privada se quedará aquí.</p>
+        <button id="btnGenerate">Generar Llaves</button>
+        <p id="genStatus"></p>
+    </div>
+
+    <div class="box">
+        <h2>2. Firmar Registro</h2>
+        <textarea id="dataToSign" rows="3">Estudiante: Carlos Lopez | ID: 9876 | Aprobado</textarea>
+        <button id="btnSign">Firmar Documento</button>
+        <p id="signStatus"></p>
+    </div>
+
+    <script>
+        let localPrivateKey = null; // En una app real, esto se guardaría en un archivo o IndexedDB
+
+        // Helper para convertir ArrayBuffer a Base64
+        function bufferToBase64(buffer) {
+            return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+        }
+
+        // Helper matemático para convertir firma RAW (Web Crypto) a DER (Python/Cryptography)
+        function rawSignatureToDER(rawSigBuffer) {
+            const raw = new Uint8Array(rawSigBuffer);
+            let r = Array.from(raw.slice(0, 32));
+            let s = Array.from(raw.slice(32, 64));
+            
+            // Eliminar ceros a la izquierda, pero si el primer bit es 1, agregar un cero
+            while(r.length > 1 && r[0] === 0 && (r[1] & 0x80) === 0) r.shift();
+            if((r[0] & 0x80) !== 0) r.unshift(0);
+            
+            while(s.length > 1 && s[0] === 0 && (s[1] & 0x80) === 0) s.shift();
+            if((s[0] & 0x80) !== 0) s.unshift(0);
+
+            const rBytes = [0x02, r.length, ...r];
+            const sBytes = [0x02, s.length, ...s];
+            const seq = [...rBytes, ...sBytes];
+            return new Uint8Array([0x30, seq.length, ...seq]).buffer;
+        }
+
+        // --- PASO 1: GENERAR LLAVES ---
+        document.getElementById('btnGenerate').addEventListener('click', async () => {
+            const status = document.getElementById('genStatus');
+            status.innerText = "Generando...";
+
+            try {
+                // Generar par de llaves P-256 (equivalente a SECP256R1)
+                const keyPair = await window.crypto.subtle.generateKey(
+                    { name: "ECDSA", namedCurve: "P-256" },
+                    true,
+                    ["sign", "verify"]
+                );
+
+                localPrivateKey = keyPair.privateKey;
+
+                // Exportar Llave Pública en formato SPKI (SubjectPublicKeyInfo) para Python
+                const pubKeyBuffer = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
+                const pubKeyBase64 = bufferToBase64(pubKeyBuffer);
+
+                status.innerHTML = `✅ Llaves generadas. <br><strong>Llave Pública (para Python):</strong> ${pubKeyBase64.substring(0,25)}...`;
+                
+                // Aquí enviarías 'pubKeyBase64' a tu backend Python para guardarlo
+                await fetch('/api/registrar_llave', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pub_b64: pubKeyBase64 })
+                });
+                console.log("Llave pública registrada en el servidor.");
+
+            } catch (error) {
+                console.error(error);
+                status.innerText = "Error generando llaves.";
+            }
+        });
+
+        // --- PASO 2: FIRMAR ---
+        document.getElementById('btnSign').addEventListener('click', async () => {
+            const status = document.getElementById('signStatus');
+            const dataText = document.getElementById('dataToSign').value;
+
+            if (!localPrivateKey) {
+                alert("Primero debes generar las llaves en el paso 1.");
+                return;
+            }
+
+            try {
+                status.innerText = "Firmando...";
+                const encoder = new TextEncoder();
+                
+                // 1. Firmar con Web Crypto (Devuelve RAW)
+                const rawSignature = await window.crypto.subtle.sign(
+                    { name: "ECDSA", hash: { name: "SHA-256" } },
+                    localPrivateKey,
+                    encoder.encode(dataText)
+                );
+
+                // 2. Convertir a formato DER para que Python lo entienda
+                const derSignature = rawSignatureToDER(rawSignature);
+                const signatureB64 = bufferToBase64(derSignature);
+
+                status.innerHTML = `✅ Documento firmado.<br><strong>Firma Base64:</strong> ${signatureB64.substring(0,25)}...`;
+
+                // Enviar datos y firma a Python para verificar
+                const respuesta = await fetch('/api/verificar_registro', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mensaje: dataText,
+                        firma_b64: signatureB64
+                    })
+                });
+                
+                const resultadoBackend = await respuesta.json();
+                alert("Respuesta del servidor: " + resultadoBackend.mensaje);
+
+            } catch (error) {
+                console.error(error);
+                status.innerText = "Error al firmar.";
+            }
+        });
+    </script>
+</body>
+</html>
