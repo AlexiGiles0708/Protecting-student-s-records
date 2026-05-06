@@ -13,8 +13,8 @@ from datetime import timedelta
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type:   str = "bearer"
-    user: UsuarioResponse | EstudianteResponse
+    token_type: str
+    user: dict
 
 router = APIRouter()
 

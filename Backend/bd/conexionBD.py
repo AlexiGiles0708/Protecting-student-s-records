@@ -1,9 +1,16 @@
 import pyodbc
 import os
 from dotenv import load_dotenv
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BASE_DIR / ".env")
 
 # Cargar las variables del archivo .env
-load_dotenv()
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BASE_DIR / ".env")
 
 def connect_to_database():
     try:
