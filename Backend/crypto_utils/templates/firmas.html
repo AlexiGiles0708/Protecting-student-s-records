@@ -2,201 +2,485 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Panel de Firmas - Registros Estudiantiles</title>
+    <title>Sistema de Firma de Registros Académicos</title>
+
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 40px auto; padding: 20px; background-color: #f4f7f6; color: #333; }
-        .box { background: white; border: 1px solid #ddd; padding: 25px; border-radius: 10px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        h2 { margin-top: 0; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-        label { font-weight: bold; display: block; margin-top: 15px; margin-bottom: 5px; color: #555; }
-        input, select, textarea { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-        button { background: #3498db; color: white; border: none; padding: 12px 20px; cursor: pointer; border-radius: 5px; font-size: 16px; font-weight: bold; width: 100%; transition: background 0.3s; }
-        button:hover { background: #2980b9; }
-        .success { color: #27ae60; background: #eafaf1; padding: 10px; border-radius: 5px; border-left: 4px solid #27ae60; margin-top: 15px;}
-        .error { color: #c0392b; background: #fdedec; padding: 10px; border-radius: 5px; border-left: 4px solid #c0392b; margin-top: 15px;}
-        .dynamic-section { display: none; padding: 15px; background: #f8f9fa; border-radius: 5px; border: 1px dashed #ccc; }
-        .dynamic-section.active { display: block; }
-    </style>
-</head>
-<body>
-
-    <div class="box">
-        <h2>1. Identidad Criptográfica (Paso Único)</h2>
-        <p>Genera tus llaves locales. La pública se registrará en el servidor.</p>
-        <button id="btnGenerate">Generar y Registrar Llaves</button>
-        <div id="genStatus"></div>
-    </div>
-
-    <div class="box">
-        <h2>2. Acción y Firma de Documentos</h2>
-        
-        <label for="tipoAccion">¿Qué acción deseas realizar y firmar?</label>
-        <select id="tipoAccion">
-            <option value="">-- Selecciona una acción --</option>
-            <optgroup label="Módulo de Profesores">
-                <option value="calificacion">Subir/Firmar Calificación</option>
-                <option value="reporte">Generar/Firmar Reporte Disciplinario</option>
-            </optgroup>
-            <optgroup label="Módulo de Gestión Escolar">
-                <option value="registro_alumno">Registrar Nuevo Alumno</option>
-                <option value="modificacion_expediente">Modificar Expediente de Alumno</option>
-            </optgroup>
-        </select>
-
-        <!-- Formularios Dinámicos -->
-        <div id="form_calificacion" class="dynamic-section">
-            <label>ID del Alumno:</label> <input type="number" id="cal_id_alumno" placeholder="Ej: 2024001">
-            <label>Materia:</label> <input type="text" id="cal_materia" placeholder="Ej: Matemáticas Avanzadas">
-            <label>Calificación Final:</label> <input type="number" id="cal_nota" placeholder="Ej: 95">
-        </div>
-
-        <div id="form_reporte" class="dynamic-section">
-            <label>ID del Alumno:</label> <input type="number" id="rep_id_alumno" placeholder="Ej: 2024001">
-            <label>Motivo del Reporte:</label> <textarea id="rep_motivo" rows="3" placeholder="Ej: Falta de respeto al reglamento..."></textarea>
-            <label>Nivel de Gravedad:</label> 
-            <select id="rep_gravedad">
-                <option value="Leve">Leve</option><option value="Grave">Grave</option>
-            </select>
-        </div>
-
-        <div id="form_registro_alumno" class="dynamic-section">
-            <label>Nombre Completo:</label> <input type="text" id="reg_nombre" placeholder="Ej: Ana María López">
-            <label>CURP:</label> <input type="text" id="reg_curp" placeholder="18 caracteres">
-            <label>Generación:</label> <input type="number" id="reg_generacion" placeholder="Ej: 2024">
-        </div>
-
-        <div id="form_modificacion_expediente" class="dynamic-section">
-            <label>ID del Alumno a Modificar:</label> <input type="number" id="mod_id_alumno" placeholder="Ej: 2024001">
-            <label>Campo Modificado:</label> <input type="text" id="mod_campo" placeholder="Ej: Dirección, Tipo de Sangre...">
-            <label>Nuevo Valor:</label> <input type="text" id="mod_valor" placeholder="Ej: Calle Nueva 123">
-        </div>
-
-        <button id="btnSign" style="margin-top: 20px;">Firmar y Enviar a Servidor</button>
-        <div id="signStatus"></div>
-    </div>
-
-    <script>
-        let localPrivateKey = null;
-
-        // Mostrar el formulario correcto según el select
-        document.getElementById('tipoAccion').addEventListener('change', function() {
-            document.querySelectorAll('.dynamic-section').forEach(el => el.classList.remove('active'));
-            if(this.value) {
-                document.getElementById('form_' + this.value).classList.add('active');
-            }
-        });
-
-        // Helpers criptográficos
-        function bufferToBase64(buffer) { return btoa(String.fromCharCode(...new Uint8Array(buffer))); }
-        function rawSignatureToDER(rawSigBuffer) {
-            const raw = new Uint8Array(rawSigBuffer);
-            let r = Array.from(raw.slice(0, 32));
-            let s = Array.from(raw.slice(32, 64));
-            while(r.length > 1 && r[0] === 0 && (r[1] & 0x80) === 0) r.shift();
-            if((r[0] & 0x80) !== 0) r.unshift(0);
-            while(s.length > 1 && s[0] === 0 && (s[1] & 0x80) === 0) s.shift();
-            if((s[0] & 0x80) !== 0) s.unshift(0);
-            const rBytes = [0x02, r.length, ...r];
-            const sBytes = [0x02, s.length, ...s];
-            const seq = [...rBytes, ...sBytes];
-            return new Uint8Array([0x30, seq.length, ...seq]).buffer;
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #f4f7f6;
+            color: #333;
         }
 
-        // --- PASO 1: GENERAR LLAVES ---
-        document.getElementById('btnGenerate').addEventListener('click', async () => {
-            const status = document.getElementById('genStatus');
-            try {
-                const keyPair = await window.crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
-                localPrivateKey = keyPair.privateKey;
-                const pubKeyBuffer = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
-                const pubKeyBase64 = bufferToBase64(pubKeyBuffer);
+        .box {
+            background: white;
+            border: 1px solid #ddd;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
 
-                // Enviar llave a Python
-                await fetch('/api/registrar_llave', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pub_b64: pubKeyBase64 })
-                });
-                
-                status.innerHTML = `<div class="success">✅ Llaves generadas y públicas registradas en el servidor.</div>`;
-            } catch (error) { status.innerHTML = `<div class="error">❌ Error al generar llaves.</div>`; }
+        h1 {
+            text-align: center;
+            color: #1f3b57;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        label {
+            font-weight: bold;
+            display: block;
+            margin-top: 15px;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border: 1px solid #bbb;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+
+        .logout {
+            background: #c0392b;
+        }
+
+        .logout:hover {
+            background: #922b21;
+        }
+
+        .success {
+            color: #1e8449;
+            background: #eafaf1;
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 4px solid #27ae60;
+            margin-top: 15px;
+        }
+
+        .error {
+            color: #922b21;
+            background: #fdedec;
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 4px solid #c0392b;
+            margin-top: 15px;
+        }
+
+        .info {
+            color: #1f3b57;
+            background: #eef5ff;
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+            margin-top: 15px;
+        }
+
+        .role-panel {
+            display: none;
+        }
+
+        #appScreen {
+            display: none;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>Sistema Seguro de Firma de Registros Académicos</h1>
+
+<div id="loginScreen" class="box">
+    <h2>Inicio de Sesión</h2>
+
+    <label>Nombre de usuario:</label>
+    <input type="text" id="loginUser" placeholder="Ejemplo: profesor1">
+
+    <label>Rol:</label>
+    <select id="loginRol">
+        <option value="">-- Selecciona un rol --</option>
+        <option value="alumno">Alumno</option>
+        <option value="gestion">Gestión Escolar</option>
+        <option value="profesor">Profesor</option>
+        <option value="director">Director</option>
+    </select>
+
+    <button id="btnLogin">Entrar</button>
+</div>
+
+<div id="appScreen">
+
+    <div class="box">
+        <h2>Panel del Sistema</h2>
+        <div id="usuarioActivo" class="info"></div>
+        <button class="logout" id="btnLogout">Cerrar sesión</button>
+    </div>
+
+    <div class="box role-panel" data-role="gestion">
+        <h2>Gestión Escolar - Crear Registro</h2>
+
+        <p>Gestión Escolar crea o modifica el registro académico que será firmado por profesor y director.</p>
+
+        <label>Registro académico:</label>
+        <textarea id="registroAcademico" rows="7">Alumno: Carlos López
+Boleta: 20240001
+Materia: Criptografía
+Calificación: 9
+Estado: Aprobado</textarea>
+
+        <button id="btnGuardarRegistro">Guardar Registro</button>
+        <div id="gestionStatus"></div>
+    </div>
+
+    <div class="box role-panel" data-role="profesor">
+        <h2>Profesor - Firma Académica</h2>
+
+        <p>El profesor genera su identidad criptográfica y firma el registro académico.</p>
+
+        <button id="btnGenerateProfesor">Generar Llaves del Profesor</button>
+        <div id="profesorKeyStatus"></div>
+
+        <label>Documento a firmar:</label>
+        <textarea id="documentoProfesor" rows="7"></textarea>
+
+        <button id="btnFirmarProfesor">Firmar como Profesor</button>
+        <div id="profesorFirmaStatus"></div>
+    </div>
+
+    <div class="box role-panel" data-role="director">
+        <h2>Director - Autorización Final</h2>
+
+        <p>El director genera su identidad criptográfica y firma la autorización final del documento.</p>
+
+        <button id="btnGenerateDirector">Generar Llaves del Director</button>
+        <div id="directorKeyStatus"></div>
+
+        <label>Documento a autorizar:</label>
+        <textarea id="documentoDirector" rows="8"></textarea>
+
+        <button id="btnFirmarDirector">Firmar como Director</button>
+        <div id="directorFirmaStatus"></div>
+    </div>
+
+    <div class="box role-panel" data-role="alumno">
+        <h2>Alumno - Consulta de Estado</h2>
+
+        <p>El alumno consulta el estado del documento académico y sus firmas.</p>
+
+        <button id="btnAlumnoConsultar">Consultar Estado</button>
+        <div id="alumnoStatus"></div>
+    </div>
+
+</div>
+
+<script>
+    let usuarioActivo = "";
+    let rolActivo = "";
+
+    let privateKeys = {
+        profesor: null,
+        director: null
+    };
+
+    let estadoFirmas = {
+        profesor: false,
+        director: false
+    };
+
+    let registroActual = `Alumno: Carlos López
+Boleta: 20240001
+Materia: Criptografía
+Calificación: 9
+Estado: Aprobado`;
+
+    function actualizarDocumentos() {
+        document.getElementById("documentoProfesor").value = registroActual;
+        document.getElementById("documentoDirector").value =
+            registroActual + "\nAutorización final del director.";
+    }
+
+    function bufferToBase64(buffer) {
+        return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    }
+
+    function rawSignatureToDER(rawSigBuffer) {
+        const raw = new Uint8Array(rawSigBuffer);
+
+        let r = Array.from(raw.slice(0, 32));
+        let s = Array.from(raw.slice(32, 64));
+
+        while (r.length > 1 && r[0] === 0 && (r[1] & 0x80) === 0) r.shift();
+        if ((r[0] & 0x80) !== 0) r.unshift(0);
+
+        while (s.length > 1 && s[0] === 0 && (s[1] & 0x80) === 0) s.shift();
+        if ((s[0] & 0x80) !== 0) s.unshift(0);
+
+        const rBytes = [0x02, r.length, ...r];
+        const sBytes = [0x02, s.length, ...s];
+        const seq = [...rBytes, ...sBytes];
+
+        return new Uint8Array([0x30, seq.length, ...seq]).buffer;
+    }
+
+    document.getElementById("btnLogin").addEventListener("click", () => {
+        const user = document.getElementById("loginUser").value.trim();
+        const rol = document.getElementById("loginRol").value;
+
+        if (!user || !rol) {
+            alert("Ingresa usuario y selecciona un rol.");
+            return;
+        }
+
+        usuarioActivo = user;
+        rolActivo = rol;
+
+        document.getElementById("profesorKeyStatus").innerHTML = "";
+        document.getElementById("profesorFirmaStatus").innerHTML = "";
+        document.getElementById("directorKeyStatus").innerHTML = "";
+        document.getElementById("directorFirmaStatus").innerHTML = "";
+        document.getElementById("alumnoStatus").innerHTML = "";
+        document.getElementById("gestionStatus").innerHTML = "";
+
+        privateKeys.profesor = null;
+        privateKeys.director = null;
+
+        document.getElementById("loginScreen").style.display = "none";
+        document.getElementById("appScreen").style.display = "block";
+
+        document.querySelectorAll(".role-panel").forEach(panel => {
+            panel.style.display = "none";
         });
 
-        // --- PASO 2: CONSTRUIR MENSAJE Y FIRMAR ---
-        document.getElementById('btnSign').addEventListener('click', async () => {
-            const status = document.getElementById('signStatus');
-            const accion = document.getElementById('tipoAccion').value;
+        document.querySelector(`[data-role="${rol}"]`).style.display = "block";
 
-            if (!localPrivateKey) return alert("Primero debes generar las llaves en el paso 1.");
-            if (!accion) return alert("Selecciona una acción a realizar.");
+        actualizarDocumentos();
 
-            // Construir la cadena de texto exacta que se va a firmar (Debe coincidir con cómo la arma Python)
-            let dataText = "";
-            let payload = { accion: accion }; // Datos para enviar al backend
+        document.getElementById("usuarioActivo").innerHTML =
+            `<strong>Usuario:</strong> ${user} | <strong>Rol:</strong> ${rol}`;
+    });
 
-            if (accion === "calificacion") {
-                const id = document.getElementById('cal_id_alumno').value;
-                const mat = document.getElementById('cal_materia').value;
-                const nota = document.getElementById('cal_nota').value;
-                dataText = `CALIFICACION-${id}-${mat}-${nota}`;
-                payload.datos = { id_alumno: id, materia: mat, calificacion: nota };
-            } 
-            else if (accion === "reporte") {
-                const id = document.getElementById('rep_id_alumno').value;
-                const mot = document.getElementById('rep_motivo').value;
-                const grav = document.getElementById('rep_gravedad').value;
-                dataText = `REPORTE-${id}-${mot}-${grav}`;
-                payload.datos = { id_alumno: id, motivo: mot, gravedad: grav };
+    document.getElementById("btnLogout").addEventListener("click", () => {
+        document.getElementById("loginScreen").style.display = "block";
+        document.getElementById("appScreen").style.display = "none";
+
+        document.getElementById("loginUser").value = "";
+        document.getElementById("loginRol").value = "";
+    });
+
+    document.getElementById("btnGuardarRegistro").addEventListener("click", () => {
+        registroActual = document.getElementById("registroAcademico").value;
+
+        actualizarDocumentos();
+
+        estadoFirmas.profesor = false;
+        estadoFirmas.director = false;
+
+        document.getElementById("gestionStatus").innerHTML = `
+            <div class="success">
+                ✅ Registro guardado y enviado al flujo de firma.
+            </div>
+        `;
+    });
+
+    async function generarLlaves(rol, statusId) {
+        const status = document.getElementById(statusId);
+
+        try {
+            const keyPair = await window.crypto.subtle.generateKey(
+                { name: "ECDSA", namedCurve: "P-256" },
+                true,
+                ["sign", "verify"]
+            );
+
+            privateKeys[rol] = keyPair.privateKey;
+
+            const pubKeyBuffer = await window.crypto.subtle.exportKey(
+                "spki",
+                keyPair.publicKey
+            );
+
+            const pubKeyBase64 = bufferToBase64(pubKeyBuffer);
+
+            const respuesta = await fetch("/api/registrar_llave", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    usuario: usuarioActivo,
+                    rol: rol,
+                    pub_b64: pubKeyBase64
+                })
+            });
+
+            const data = await respuesta.json();
+
+            if (!respuesta.ok) {
+                status.innerHTML = `<div class="error">❌ Error registrando llave: ${JSON.stringify(data)}</div>`;
+                return;
             }
-            else if (accion === "registro_alumno") {
-                const nom = document.getElementById('reg_nombre').value;
-                const curp = document.getElementById('reg_curp').value;
-                const gen = document.getElementById('reg_generacion').value;
-                dataText = `REGISTRO-${nom}-${curp}-${gen}`;
-                payload.datos = { nombre: nom, curp: curp, generacion: gen };
+
+            status.innerHTML = `
+                <div class="success">
+                    ✅ Llaves generadas para ${rol}.<br>
+                    La llave privada permanece en el navegador.<br>
+                    La llave pública fue registrada en el servidor.
+                </div>
+            `;
+
+        } catch (error) {
+            console.error(error);
+
+            status.innerHTML = `
+                <div class="error">
+                    ❌ Error generando llaves.
+                </div>
+            `;
+        }
+    }
+
+    async function firmarDocumento(rol, documentoId, statusId) {
+        const status = document.getElementById(statusId);
+        const mensaje = document.getElementById(documentoId).value;
+
+        if (!privateKeys[rol]) {
+            alert("Primero genera las llaves.");
+            return;
+        }
+
+        try {
+            const encoder = new TextEncoder();
+
+            const rawSignature = await window.crypto.subtle.sign(
+                { name: "ECDSA", hash: { name: "SHA-256" } },
+                privateKeys[rol],
+                encoder.encode(mensaje)
+            );
+
+            const derSignature = rawSignatureToDER(rawSignature);
+            const signatureB64 = bufferToBase64(derSignature);
+
+            const respuesta = await fetch("/api/verificar_registro", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    usuario: usuarioActivo,
+                    rol: rol,
+                    mensaje: mensaje,
+                    firma_b64: signatureB64
+                })
+            });
+
+            const resultado = await respuesta.json();
+
+            if (respuesta.ok && resultado.firma_valida) {
+                estadoFirmas[rol] = true;
+
+                status.innerHTML = `
+                    <div class="success">
+                        ✅ Firma válida.<br>
+                        ${resultado.mensaje}<br>
+                        <strong>Usuario:</strong> ${resultado.usuario}<br>
+                        <strong>Rol:</strong> ${resultado.rol}
+                    </div>
+                `;
+            } else {
+                estadoFirmas[rol] = false;
+
+                status.innerHTML = `
+                    <div class="error">
+                        ❌ Firma inválida o error en el servidor.<br>
+                        ${JSON.stringify(resultado)}
+                    </div>
+                `;
             }
-            else if (accion === "modificacion_expediente") {
-                const id = document.getElementById('mod_id_alumno').value;
-                const cam = document.getElementById('mod_campo').value;
-                const val = document.getElementById('mod_valor').value;
-                dataText = `MODIFICACION-${id}-${cam}-${val}`;
-                payload.datos = { id_alumno: id, campo: cam, valor_nuevo: val };
-            }
 
-            try {
-                // Firmar la cadena estructurada
-                const encoder = new TextEncoder();
-                const rawSignature = await window.crypto.subtle.sign(
-                    { name: "ECDSA", hash: { name: "SHA-256" } },
-                    localPrivateKey,
-                    encoder.encode(dataText)
-                );
-                
-                const signatureB64 = bufferToBase64(rawSignatureToDER(rawSignature));
-                
-                // Agregar firma y el texto exacto al payload
-                payload.firma_b64 = signatureB64;
-                payload.mensaje = dataText;
+        } catch (error) {
+            console.error(error);
 
-                console.log("Enviando al servidor:", payload);
+            estadoFirmas[rol] = false;
 
-                const respuesta = await fetch('/api/verificar_registro', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                const resultadoBackend = await respuesta.json();
-                if(respuesta.ok) {
-                    status.innerHTML = `<div class="success">✅ ${resultadoBackend.mensaje}</div>`;
-                } else {
-                    status.innerHTML = `<div class="error">❌ ${resultadoBackend.mensaje}</div>`;
-                }
+            status.innerHTML = `
+                <div class="error">
+                    ❌ Error firmando documento.
+                </div>
+            `;
+        }
+    }
 
-            } catch (error) {
-                console.error(error);
-                status.innerHTML = `<div class="error">❌ Error en el proceso de firma.</div>`;
-            }
+    document.getElementById("btnGenerateProfesor")
+        .addEventListener("click", () => {
+            generarLlaves("profesor", "profesorKeyStatus");
         });
-    </script>
+
+    document.getElementById("btnGenerateDirector")
+        .addEventListener("click", () => {
+            generarLlaves("director", "directorKeyStatus");
+        });
+
+    document.getElementById("btnFirmarProfesor")
+        .addEventListener("click", () => {
+            firmarDocumento("profesor", "documentoProfesor", "profesorFirmaStatus");
+        });
+
+    document.getElementById("btnFirmarDirector")
+        .addEventListener("click", () => {
+            firmarDocumento("director", "documentoDirector", "directorFirmaStatus");
+        });
+
+    document.getElementById("btnAlumnoConsultar")
+        .addEventListener("click", () => {
+            document.getElementById("alumnoStatus").innerHTML = `
+                <div class="info">
+                    <strong>Documento académico:</strong>
+                    <pre>${registroActual}</pre>
+
+                    <strong>Estado de firmas:</strong><br>
+                    Profesor: ${estadoFirmas.profesor ? "✅ Firmado y validado" : "⏳ Pendiente"}<br>
+                    Director: ${estadoFirmas.director ? "✅ Firmado y validado" : "⏳ Pendiente"}
+                </div>
+            `;
+        });
+
+    actualizarDocumentos();
+</script>
+
 </body>
 </html>
